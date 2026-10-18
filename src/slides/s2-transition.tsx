@@ -195,21 +195,17 @@ const Withdraw: React.FC = () => (
 );
 
 /* Переходи перевіряються як значення */
-const PROPS = Array.from({ length: 24 }, (_, i) => {
-  const r = (n: number) => {
-    const v = Math.sin((i + 1) * 91.7 + n * 13.3) * 43758.5453;
-    return v - Math.floor(v);
-  };
-  const b = Math.floor(r(1) * 100);
-  const dep = r(2) < 0.45;
-  const amt = 1 + Math.floor(r(3) * 110);
-  const ok = dep || amt <= b;
-  const next = !ok ? b : dep ? b + amt : b - amt;
-  return { b, dep, amt, next };
-});
+const CASES = [
+  { when: "Deposit amount, amount > 0", next: "balance + amount", why: "до невід’ємного числа додаємо додатне", color: C.mint },
+  { when: "Withdraw amount, amount <= balance", next: "balance - amount", why: "знімаємо не більше, ніж є на рахунку", color: C.amber },
+  { when: "усі інші випадки", next: "balance", why: "баланс лишається попереднім", color: C.red },
+];
 
 const Testable: React.FC = () => {
   const { s } = useSteps();
+  const COLS = [130, 820, 1220];
+  const Y0 = 560;
+  const RH = 96;
   return (
     <Slide title="Переходи перевіряються як значення">
       <Lead>
@@ -230,44 +226,42 @@ const Testable: React.FC = () => {
       {[0, 1, 2].map((i) => (
         <Mark key={i} ok x={1110} y={286 + i * 46} step={1} delay={30 + i * 12} size={40} />
       ))}
-      <At x={96} y={480} step={2} size={24} weight={800} color={C.dim} style={{ letterSpacing: 1 }}>
-        ІНВАРІАНТ НА ВИПАДКОВИХ ВХОДАХ: БАЛАНС ≥ 0 ПІСЛЯ ПЕРЕХОДУ
+      <At x={96} y={460} step={2} size={24} weight={800} color={C.dim} style={{ letterSpacing: 1 }}>
+        ЧОМУ БАЛАНС НІКОЛИ НЕ СТАНЕ ВІД’ЄМНИМ: РОЗБІР УСІХ ВИПАДКІВ
       </At>
-      {PROPS.map((pr, i) => {
-        const p = s(2, 6 + i * 3, POP);
-        const col = i % 6;
-        const row = Math.floor(i / 6);
+      {["Випадок", "Новий баланс", "Чому він ≥ 0, якщо balance ≥ 0"].map((h, i) => (
+        <At key={h} x={COLS[i]} y={510} step={2} delay={6} size={20} weight={800} color={C.faint} style={{ letterSpacing: 1 }}>
+          {h.toUpperCase()}
+        </At>
+      ))}
+      {CASES.map((c, i) => {
+        const p = s(2, 14 + i * 16, POP);
         return (
           <div
-            key={i}
+            key={c.next}
             style={{
               position: "absolute",
-              left: 96 + col * 290,
-              top: 530 + row * 74,
-              width: 270,
-              height: 58,
+              left: 96,
+              top: Y0 + i * RH,
+              width: 1728,
+              height: RH - 16,
               borderRadius: 12,
-              border: `2px solid ${C.mint}55`,
-              background: `${C.mint}10`,
-              boxSizing: "border-box",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0 16px",
-              fontFamily: F.mono,
-              fontSize: 21,
-              color: C.text,
-              whiteSpace: "pre",
-              ...appear(p, 10),
+              background: C.panel,
+              borderLeft: `6px solid ${c.color}`,
+              opacity: clamp01(p),
+              transform: `translateY(${(1 - p) * 14}px)`,
             }}
           >
-            <span>
-              <span style={{ color: pr.dep ? C.mint : C.amber }}>{`${pr.dep ? "+" : "−"}${pr.amt}`.padEnd(5)}</span>
-              <span style={{ color: C.lav }}>{pr.b}</span>
-              <span style={{ color: C.faint }}>{" → "}</span>
-              <span style={{ color: C.lav }}>{pr.next}</span>
-            </span>
-            <span style={{ color: C.mint, fontWeight: 800 }}>✓</span>
+            <div style={{ position: "absolute", left: COLS[0] - 96, top: 0, height: RH - 16, display: "flex", alignItems: "center", fontFamily: i < 2 ? F.mono : F.body, fontWeight: 700, fontSize: i < 2 ? 25 : 27, color: c.color, whiteSpace: "pre", fontVariantLigatures: "none" }}>
+              {c.when}
+            </div>
+            <div style={{ position: "absolute", left: COLS[1] - 96, top: 0, height: RH - 16, display: "flex", alignItems: "center", fontFamily: F.mono, fontWeight: 700, fontSize: 27, color: C.lav, whiteSpace: "pre", fontVariantLigatures: "none" }}>
+              {c.next}
+            </div>
+            <div style={{ position: "absolute", left: COLS[2] - 96, top: 0, height: RH - 16, display: "flex", alignItems: "center", gap: 16, fontFamily: F.body, fontWeight: 600, fontSize: 27, color: C.text }}>
+              <span style={{ color: C.mint, fontWeight: 800, opacity: clamp01(s(2, 26 + i * 16)) }}>✓</span>
+              {c.why}
+            </div>
           </div>
         );
       })}
@@ -282,5 +276,5 @@ export const s2Slides: SlideDef[] = [
   { id: "types", title: "Типи даних", steps: [40, 60, 70, 60], C: Types },
   { id: "deposit", title: "Функція переходу", steps: [40, 60, 80, 60], C: Deposit },
   { id: "withdraw", title: "Зняття коштів", steps: [40, 60, 80, 80, 60], C: Withdraw },
-  { id: "testable", title: "Перевірка переходів", steps: [40, 80, 100, 70], C: Testable },
+  { id: "testable", title: "Перевірка переходів", steps: [40, 80, 90, 70], C: Testable },
 ];
