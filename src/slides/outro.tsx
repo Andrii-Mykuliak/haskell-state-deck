@@ -15,7 +15,7 @@ const AMT: number[] = [];
 const OK: boolean[] = [];
 const BAL: number[] = [0];
 for (let k = 1; k <= N; k++) {
-  const dep = rnd(k * 3.1) < 0.58;
+  const dep = k <= 2 || rnd(k * 3.1) < 0.58;
   const amt = dep ? 10 + Math.floor(rnd(k * 5.7) * 6) * 10 : 10 + Math.floor(rnd(k * 9.3) * 6) * 10;
   const ok = dep || amt <= BAL[k - 1];
   KIND[k] = dep;
