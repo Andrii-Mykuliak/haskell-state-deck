@@ -248,85 +248,7 @@ const ScanSlide: React.FC = () => {
         рішень у списку немає
       </At>
       <At x={96} y={800} w={1720} step={4} size={30} weight={600}>
-        Історія <M c={C.lav}>s₀, s₁, …, sₙ</M> – звичайний список: її можна відтворити, протестувати й порівняти з іншою послідовністю команд. Але рішення все ще губляться.
-      </At>
-    </Slide>
-  );
-};
-
-/* Рішення й стани разом: mapAccumL */
-const AccumSlide: React.FC = () => {
-  const { s, t } = useSteps();
-  const X = 1170;
-  const Y0 = 470;
-  const RH = 84;
-  const STEP_GAP = 34;
-  const done = s(2, 3 * STEP_GAP + 10, POP);
-  return (
-    <Slide title="Рішення й стани разом: mapAccumL">
-      <Lead>Щоб не втратити рішення, крок має повертати і новий стан, і результат.</Lead>
-      <SyntaxBox
-        x={96}
-        y={290}
-        w={1000}
-        step={1}
-        size={24}
-        lines={["mapAccumL {step} {s0} {xs}   -- ({sN}, [{r1}, …, {rN}])", "-- {step} :: {s} -> {x} -> ({s}, {r})", "let {pattern} = {expr} in {body}   -- локальне ім’я"]}
-      />
-      <Code
-        x={96}
-        y={470}
-        size={28}
-        lh={40}
-        step={1}
-        delay={24}
-        stagger={8}
-        code={`
-          import Data.List (mapAccumL)
-          step balance command =
-            let (decision, next) = transition command balance
-            in (next, decision)
-          mapAccumL step 0 commands
-          -- (30,[Approved,Approved,Declined])
-        `}
-      />
-      <At x={X} y={Y0 - 60} step={2} size={22} weight={800} color={C.lav} style={{ letterSpacing: 1 }}>
-        СТАН
-      </At>
-      <At x={X + 420} y={Y0 - 60} step={2} size={22} weight={800} color={C.mint} style={{ letterSpacing: 1 }}>
-        РЕЗУЛЬТАТ
-      </At>
-      {COMMANDS.map((c, k) => {
-        const tt = t(2, k * STEP_GAP);
-        const p = s(2, k * STEP_GAP, POP);
-        const y = Y0 + k * RH;
-        return (
-          <div key={k} style={{ position: "absolute", left: X, top: y, display: "flex", alignItems: "center", gap: 14, ...appear(p, 14) }}>
-            <BalBox v={BALANCES[k]} w={84} h={52} size={26} />
-            <span style={{ fontFamily: F.mono, fontSize: 26, color: C.faint }}>→</span>
-            <CmdChip cmd={c} size={20} glow={pulse(tt, 10, 12)} />
-            <span style={{ fontFamily: F.mono, fontSize: 26, color: C.faint }}>→</span>
-            <BalBox v={BALANCES[k + 1]} w={84} h={52} size={26} />
-            <span style={{ width: 20 }} />
-            <span style={{ ...appear(s(2, k * STEP_GAP + 14, POP), 8) }}>
-              <DecChip ok={DECISIONS[k]} size={20} />
-            </span>
-          </div>
-        );
-      })}
-      <div style={{ position: "absolute", left: X, top: Y0 + 3 * RH + 30, fontFamily: F.mono, fontWeight: 700, fontSize: 30, color: C.text, whiteSpace: "pre", ...appear(done) }}>
-        <span style={{ color: C.dim }}>(</span>
-        <span style={{ color: C.lav }}>30</span>
-        <span style={{ color: C.dim }}>, [</span>
-        <span style={{ color: C.mint }}>✓</span>
-        <span style={{ color: C.dim }}>, </span>
-        <span style={{ color: C.mint }}>✓</span>
-        <span style={{ color: C.dim }}>, </span>
-        <span style={{ color: C.red }}>✗</span>
-        <span style={{ color: C.dim }}>])</span>
-      </div>
-      <At x={96} y={880} w={1720} step={3} size={30} weight={600}>
-        <M>mapAccumL</M> поєднує <M>map</M> (список результатів) і згортку (стан). Цю саму схему згодом узагальнить <A>State</A>.
+        Історія <M c={C.lav}>s₀, s₁, …, sₙ</M> – звичайний список, який можна відтворити й протестувати. Стан тут передається явно; далі – як зберегти його в <A>замиканні</A>.
       </At>
     </Slide>
   );
@@ -336,5 +258,4 @@ export const s3Slides: SlideDef[] = [
   { id: "threading", title: "Передавання стану", steps: [40, 70, 3 * RUN + 50, 70], C: Threading },
   { id: "foldl", title: "foldl", steps: [40, 70, 3 * 36 + 60, 70], C: FoldSlide },
   { id: "scanl", title: "scanl", steps: [40, 40, 80, 60, 70], C: ScanSlide },
-  { id: "mapaccum", title: "mapAccumL", steps: [40, 80, 3 * 34 + 50, 70], C: AccumSlide },
 ];
