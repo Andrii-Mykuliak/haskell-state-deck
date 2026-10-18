@@ -4,6 +4,7 @@ import { mix, POP, SlideDef, useSteps } from "../deck/steps";
 import { At, HaskellLogo, Slide } from "../deck/ui";
 import { AuthorBlock } from "../deck/Author";
 import { clamp01, useClock } from "./common";
+import { Gear } from "./bank";
 
 const TITLE_STATES = [0, 50, 30, 30];
 
@@ -89,132 +90,138 @@ const TitleSlide: React.FC = () => {
   );
 };
 
-/* Epigraph: a river that never stops, and snapshots of it that never change. */
-const RIVER_Y = 560;
-const CAP0 = 64;
-const CAP_GAP = 30;
-const SLOTS = 6;
-const SLOT_W = 190;
-const SLOT_GAP = 30;
-const SLOT_X0 = (1920 - (SLOTS * SLOT_W + (SLOTS - 1) * SLOT_GAP)) / 2;
-const SLOT_Y = 300;
-const SLOT_H = 124;
-const RISE = 22;
-const QUOTE_STOP = CAP0 + (SLOTS - 1) * CAP_GAP + RISE + 40;
-const WAVES = [
-  { dy: -54, amp: 16, k: 0.011, w: 1.5, color: C.accent, op: 0.55 },
-  { dy: -18, amp: 22, k: 0.008, w: 1.1, color: C.lav, op: 0.7 },
-  { dy: 18, amp: 18, k: 0.013, w: 1.8, color: C.accentHi, op: 0.5 },
-  { dy: 54, amp: 12, k: 0.016, w: 2.3, color: C.mint, op: 0.35 },
-];
+/* Epigraph: moving parts hidden inside an object vs. a chain of values with no moving parts. */
+const PANEL_Y = 318;
+const PANEL_H = 330;
+const OO_X = 110;
+const FP_X = 1010;
+const PANEL_W = 800;
+const CHAIN = [0, 50, 30, 30];
+const CHAIN_AT = 40;
+const CHAIN_GAP = 26;
+const QUOTE_STOP = CHAIN_AT + CHAIN.length * CHAIN_GAP + 60;
 
-const waveY = (wv: (typeof WAVES)[number], x: number, time: number) =>
-  RIVER_Y + wv.dy + wv.amp * Math.sin(wv.k * x - wv.w * time) + 6 * Math.sin(0.004 * x + 0.7 * time);
-
-const wavePath = (wv: (typeof WAVES)[number], time: number, x0: number, x1: number, dx = 0, dy = 0, scale = 1) => {
-  const pts: string[] = [];
-  for (let x = x0; x <= x1; x += 12) {
-    pts.push(`${(x - x0) * scale + dx},${(waveY(wv, x, time) - RIVER_Y) * scale + dy}`);
-  }
-  return `M ${pts.join(" L ")}`;
-};
-
-const River: React.FC = () => {
+const MovingParts: React.FC = () => {
   const { s, frame, fps } = useSteps();
   const clock = useClock();
   const time = Math.max(frame / fps, clock);
-  const on = clamp01(s(0, 8));
-  const drops = Array.from({ length: 34 }, (_, i) => {
-    const speed = 90 + ((i * 37) % 60);
-    const x = ((i * 211 + time * speed) % 2100) - 90;
-    const wv = WAVES[i % WAVES.length];
-    return { x, y: waveY(wv, x, time) + ((i * 13) % 20) - 10, r: 2 + (i % 3), c: wv.color };
-  });
+  const oo = s(0, 20, POP);
+  const fp = s(0, 30, POP);
+  const tick = Math.floor(time * 1.4);
+  const shown = [0, 50, 30, 80, 10, 60][tick % 6];
+  const flick = 1 - ((time * 1.4) % 1);
+  const gears = [
+    { x: 150, y: 150, size: 150, speed: 70, color: C.amber },
+    { x: 270, y: 210, size: 100, speed: -105, color: C.orange },
+    { x: 250, y: 80, size: 80, speed: 130, color: C.amber },
+  ];
   return (
     <>
-      <svg width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, opacity: on }}>
-        <defs>
-          <linearGradient id="riverBand" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.accent} stopOpacity={0} />
-            <stop offset="50%" stopColor={C.accent} stopOpacity={0.12} />
-            <stop offset="100%" stopColor={C.accent} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <rect x={0} y={RIVER_Y - 110} width={1920} height={220} fill="url(#riverBand)" />
-        {WAVES.map((wv, i) => (
-          <path key={i} d={wavePath(wv, time, -20, 1940, -20, RIVER_Y)} fill="none" stroke={wv.color} strokeWidth={3} opacity={wv.op} strokeLinecap="round" />
-        ))}
-        {drops.map((d, i) => (
-          <circle key={i} cx={d.x} cy={d.y} r={d.r} fill={d.c} opacity={0.55} />
-        ))}
-      </svg>
-      {Array.from({ length: SLOTS }, (_, k) => {
-        const capAt = CAP0 + k * CAP_GAP;
-        const capTime = capAt / fps;
-        const x = SLOT_X0 + k * (SLOT_W + SLOT_GAP);
-        const cx = x + SLOT_W / 2;
-        const since = frame - capAt;
-        const flash = since >= 0 && since < 18 ? 1 - since / 18 : 0;
-        const rise = s(0, capAt, POP);
-        const y = mix(RIVER_Y - SLOT_H / 2, SLOT_Y, clamp01(rise));
-        const shown = since >= 0;
-        return (
-          <React.Fragment key={k}>
-            {flash > 0 && (
-              <svg width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}>
-                <circle cx={cx} cy={RIVER_Y} r={30 + 90 * (1 - flash)} fill="none" stroke="#ffffff" strokeWidth={4 * flash} opacity={flash} />
-                <circle cx={cx} cy={RIVER_Y} r={40 * flash} fill="#ffffff" opacity={0.35 * flash} />
-              </svg>
-            )}
-            <div
-              style={{
-                position: "absolute",
-                left: SLOT_X0 + k * (SLOT_W + SLOT_GAP),
-                top: SLOT_Y,
-                width: SLOT_W,
-                height: SLOT_H,
-                borderRadius: 14,
-                border: `2px dashed ${C.line}`,
-                boxSizing: "border-box",
-                opacity: on * (shown ? 0 : 0.6),
-              }}
-            />
-            {shown && (
+      <div
+        style={{
+          position: "absolute",
+          left: OO_X,
+          top: PANEL_Y,
+          width: PANEL_W,
+          height: PANEL_H,
+          borderRadius: 22,
+          border: `3px solid ${C.amber}`,
+          background: `linear-gradient(180deg, ${C.amber}12, ${C.panel})`,
+          boxSizing: "border-box",
+          overflow: "hidden",
+          opacity: clamp01(oo),
+          transform: `translateY(${(1 - oo) * 30}px)`,
+        }}
+      >
+        <div style={{ position: "absolute", left: 28, top: 20, fontFamily: F.mono, fontWeight: 700, fontSize: 30, color: C.amber }}>OO: account : Account</div>
+        <div style={{ position: "absolute", left: 28, top: 80, width: 380, height: 220, borderRadius: 16, background: "#10131c", border: `2px solid ${C.line}` }}>
+          {gears.map((g, i) => (
+            <div key={i} style={{ position: "absolute", left: g.x - g.size / 2 + 40, top: g.y - g.size / 2 - 40 }}>
+              <Gear size={g.size} angle={time * g.speed} color={g.color} />
+            </div>
+          ))}
+        </div>
+        <div style={{ position: "absolute", left: 450, top: 110, fontFamily: F.mono, fontSize: 26, color: C.dim }}>balance =</div>
+        <div
+          style={{
+            position: "absolute",
+            left: 450,
+            top: 152,
+            width: 300,
+            height: 110,
+            borderRadius: 16,
+            border: `3px solid ${C.red}`,
+            background: `${C.red}14`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: F.mono,
+            fontWeight: 800,
+            fontSize: 64,
+            color: C.text,
+            boxShadow: `0 0 ${22 * flick}px ${C.red}`,
+          }}
+        >
+          <span style={{ opacity: 0.4 + 0.6 * (1 - flick * 0.6) }}>{shown}</span>
+        </div>
+        <div style={{ position: "absolute", left: 450, top: 276, fontFamily: F.body, fontWeight: 600, fontSize: 22, color: C.red }}>значення перезаписується</div>
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          left: FP_X,
+          top: PANEL_Y,
+          width: PANEL_W,
+          height: PANEL_H,
+          borderRadius: 22,
+          border: `3px solid ${C.mint}`,
+          background: `linear-gradient(180deg, ${C.mint}10, ${C.panel})`,
+          boxSizing: "border-box",
+          opacity: clamp01(fp),
+          transform: `translateY(${(1 - fp) * 30}px)`,
+        }}
+      >
+        <div style={{ position: "absolute", left: 28, top: 20, fontFamily: F.mono, fontWeight: 700, fontSize: 30, color: C.mint }}>FP: scanl advance 0 commands</div>
+        {CHAIN.map((v, k) => {
+          const p = s(0, CHAIN_AT + k * CHAIN_GAP, POP);
+          return (
+            <React.Fragment key={k}>
+              {k > 0 && (
+                <div style={{ position: "absolute", left: 40 + k * 190 - 52, top: 150, fontFamily: F.mono, fontSize: 40, color: C.faint, opacity: clamp01(p) }}>→</div>
+              )}
               <div
                 style={{
                   position: "absolute",
-                  left: x,
-                  top: y,
-                  width: SLOT_W,
-                  height: SLOT_H,
-                  borderRadius: 14,
+                  left: 40 + k * 190,
+                  top: 128,
+                  width: 130,
+                  height: 100,
+                  borderRadius: 16,
                   border: `3px solid ${C.lav}`,
-                  background: C.panel,
-                  boxSizing: "border-box",
-                  overflow: "hidden",
-                  boxShadow: `0 0 ${24 * flash}px #ffffff`,
-                  transform: `scale(${mix(0.6, 1, clamp01(rise))})`,
+                  background: `${C.lav}1c`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontFamily: F.mono,
+                  fontWeight: 800,
+                  fontSize: 44,
+                  color: C.lav,
+                  opacity: clamp01(p),
+                  transform: `scale(${mix(0.6, 1, clamp01(p))})`,
                 }}
               >
-                <svg width={SLOT_W} height={SLOT_H} style={{ position: "absolute", left: 0, top: 0 }}>
-                  {WAVES.map((wv, i) => (
-                    <path
-                      key={i}
-                      d={wavePath(wv, capTime, cx - 150, cx + 150, 0, SLOT_H / 2 - 8, SLOT_W / 300)}
-                      fill="none"
-                      stroke={wv.color}
-                      strokeWidth={2}
-                      opacity={wv.op}
-                    />
-                  ))}
-                </svg>
-                <div style={{ position: "absolute", left: 10, bottom: 6, fontFamily: F.mono, fontWeight: 700, fontSize: 22, color: C.text }}>{`s${"₀₁₂₃₄₅"[k]}`}</div>
-                <div style={{ position: "absolute", right: 10, bottom: 8, fontFamily: F.mono, fontSize: 18, color: C.dim }}>{`t${"₀₁₂₃₄₅"[k]}`}</div>
+                {v}
               </div>
-            )}
-          </React.Fragment>
-        );
-      })}
+              <div style={{ position: "absolute", left: 40 + k * 190, width: 130, top: 238, textAlign: "center", fontFamily: F.mono, fontSize: 24, color: C.dim, opacity: clamp01(p) }}>
+                {`s${"₀₁₂₃"[k]}`}
+              </div>
+            </React.Fragment>
+          );
+        })}
+        <div style={{ position: "absolute", left: 40, top: 276, fontFamily: F.body, fontWeight: 600, fontSize: 22, color: C.mint, opacity: clamp01(s(0, CHAIN_AT + CHAIN.length * CHAIN_GAP)) }}>
+          кожне значення лишається незмінним
+        </div>
+      </div>
     </>
   );
 };
@@ -223,7 +230,7 @@ const QuoteSlide: React.FC = () => {
   const { s } = useSteps();
   const words = (str: string, base: number, color?: string) =>
     str.split(" ").map((w, i) => {
-      const p = s(0, base + i * 3.5, POP);
+      const p = s(0, base + i * 3, POP);
       return (
         <span key={i} style={{ display: "inline-block", whiteSpace: "pre", opacity: Math.min(1, p), transform: `translateY(${(1 - p) * 40}px)`, color }}>
           {w + " "}
@@ -232,34 +239,38 @@ const QuoteSlide: React.FC = () => {
     });
   return (
     <Slide>
-      <River />
-      <div style={{ position: "absolute", left: 110, top: 92, width: 1720, fontFamily: F.head, fontWeight: 800, fontSize: 60, lineHeight: 1.22, color: C.text }}>
-        <div>{words("All things are in motion and nothing at rest;", 4)}</div>
+      <MovingParts />
+      <div style={{ position: "absolute", left: 110, top: 100, width: 1760, fontFamily: F.head, fontWeight: 800, fontSize: 50, lineHeight: 1.25, color: C.text, whiteSpace: "nowrap" }}>
         <div>
-          {words("you cannot go into the", 34)}
-          {words("same water", 52, C.accentHi)}
-          {words("twice.", 60)}
+          {words("OO makes code understandable by", 4)}
+          {words("encapsulating", 22, C.amber)}
+          {words("moving parts.", 25)}
+        </div>
+        <div>
+          {words("FP makes code understandable by", 34)}
+          {words("minimizing", 52, C.mint)}
+          {words("moving parts.", 55)}
         </div>
       </div>
       <div
         style={{
           position: "absolute",
           left: 116,
-          top: 724,
+          top: 704,
           height: 6,
           width: mix(0, 420, s(1, 0)),
           background: `linear-gradient(90deg, ${C.accent}, ${C.pink})`,
           borderRadius: 3,
         }}
       />
-      <At x={110} y={752} w={1700} step={1} delay={6} size={42} weight={600} color={C.text}>
-        Усе рухається, і ніщо не стоїть на місці: у ту саму воду не можна ввійти двічі.
+      <At x={110} y={730} w={1720} step={1} delay={6} size={40} weight={600} color={C.text}>
+        ООП робить код зрозумілим, інкапсулюючи рухомі частини. ФП робить код зрозумілим, мінімізуючи рухомі частини.
       </At>
-      <At x={110} y={850} step={1} delay={24} size={34} weight={400} color={C.dim} font={F.mono}>
-        Heraclitus
+      <At x={110} y={880} step={1} delay={24} size={34} weight={400} color={C.dim} font={F.mono}>
+        Michael Feathers
       </At>
-      <At x={110} y={900} w={1600} step={1} delay={36} size={30} weight={400} color={C.dim}>
-        у переказі Платона, «Кратил», 402a; пер. Б. Джоуетта
+      <At x={110} y={930} w={1600} step={1} delay={36} size={30} weight={400} color={C.dim}>
+        Twitter, 3 листопада 2010
       </At>
     </Slide>
   );
