@@ -9,39 +9,70 @@ const rnd = (n: number) => {
   return v - Math.floor(v);
 };
 
-const N = 4000;
-const KIND: boolean[] = [];
-const AMT: number[] = [];
-const OK: boolean[] = [];
-const BAL: number[] = [0];
-for (let k = 1; k <= N; k++) {
-  const dep = k <= 2 || rnd(k * 3.1) < 0.58;
-  const amt = dep ? 10 + Math.floor(rnd(k * 5.7) * 6) * 10 : 10 + Math.floor(rnd(k * 9.3) * 6) * 10;
-  const ok = dep || amt <= BAL[k - 1];
-  KIND[k] = dep;
-  AMT[k] = amt;
-  OK[k] = ok;
-  BAL[k] = ok ? (dep ? BAL[k - 1] + amt : BAL[k - 1] - amt) : BAL[k - 1];
-}
+/* A commit graph of balances: main grows every tick, side branches fork from older commits. */
+type Commit = { k: number; lane: number; parent: number; bal: number; amt: number; dep: boolean; ok: boolean; branch: number };
 
-const PERIOD = 0.85;
-const FLY = 0.8;
-const START = 0.9;
-const CX = 1330;
-const CY = 540;
-const VISIBLE = 22;
-const BURST = 0.7;
+const LANE_Y = [560, 400, 720, 260, 860];
+const LANE_COLOR = [C.accentHi, C.pink, C.amber, C.mint, C.orange];
+const TICKS = 3000;
 
-const posAt = (age: number, time: number) => {
-  const r = 80 + 44 * age;
-  const th = -Math.PI / 2 + age * 0.55 + time * 0.07;
-  return { x: CX + Math.cos(th) * r, y: CY + Math.sin(th) * r * 0.86 };
-};
+const COMMITS: Commit[] = [];
+const FIRST_AT: number[] = [];
+const MAIN_AT: number[] = [];
+(() => {
+  const lanes = LANE_Y.map((_, i) => ({ active: i === 0, head: -1, until: i === 0 ? Infinity : -1, freeFrom: 0, branch: 0 }));
+  let branchNo = 0;
+  const add = (k: number, lane: number, parent: number, branch: number, seed: number) => {
+    const before = parent >= 0 ? COMMITS[parent].bal : 0;
+    const dep = parent < 0 || before < 20 || rnd(seed * 3.3) < 0.55;
+    const amt = parent < 0 ? 0 : 10 + Math.floor(rnd(seed * 7.1) * 6) * 10;
+    const ok = dep || amt <= before;
+    const bal = parent < 0 ? 0 : ok ? (dep ? before + amt : before - amt) : before;
+    COMMITS.push({ k, lane, parent, bal, amt, dep, ok, branch });
+    return COMMITS.length - 1;
+  };
+  for (let k = 0; k <= TICKS; k++) {
+    FIRST_AT[k] = COMMITS.length;
+    lanes[0].head = add(k, 0, lanes[0].head, 0, k * 5 + 1);
+    MAIN_AT[k] = lanes[0].head;
+    for (let l = 1; l < lanes.length; l++) {
+      const ln = lanes[l];
+      if (ln.active && k <= ln.until && ln.head >= 0 && COMMITS[ln.head].k < k) {
+        ln.head = add(k, l, ln.head, ln.branch, k * 5 + l + 2);
+      }
+      if (ln.active && k > ln.until) {
+        ln.active = false;
+        ln.freeFrom = k + 3;
+      }
+    }
+    if (k >= 2 && k % 2 === 0) {
+      const free = lanes.findIndex((ln, i) => i > 0 && !ln.active && k >= ln.freeFrom);
+      if (free > 0 && rnd(k * 1.7) < 0.7) {
+        const back = 1 + Math.floor(rnd(k * 2.9) * 3);
+        const parent = MAIN_AT[Math.max(0, k - back)];
+        branchNo += 1;
+        const ln = lanes[free];
+        ln.active = true;
+        ln.branch = branchNo;
+        ln.until = k + 2 + Math.floor(rnd(k * 4.3) * 3);
+        ln.head = add(k, free, parent, branchNo, k * 5 + free + 3);
+      }
+    }
+  }
+  FIRST_AT[TICKS + 1] = COMMITS.length;
+})();
 
-const DUST = Array.from({ length: 110 }, (_, i) => ({
+const T = 0.95;
+const START = 0.8;
+const SPACING = 150;
+const X_HEAD = 1700;
+const X_FADE = 820;
+const R = 25;
+
+const DUST = Array.from({ length: 90 }, (_, i) => ({
   x: rnd(i + 1000) * 1920,
   y: rnd(i + 2000) * 1080,
-  r: 0.6 + rnd(i + 3000) * 2,
+  r: 0.6 + rnd(i + 3000) * 1.8,
   ph: rnd(i + 4000) * 6.28,
   c: [C.lav, C.accentHi, C.mint, C.amber, C.pink][i % 5],
 }));
@@ -64,145 +95,145 @@ const Outro: React.FC = () => {
       );
     });
 
-  const K = Math.max(0, Math.min(N, Math.floor((t - START) / PERIOD)));
-  const live = t >= START;
-  const k0 = Math.max(0, K - VISIBLE);
+  const now = (t - START) / T;
+  const K = Math.max(-1, Math.min(TICKS, Math.floor(now)));
+  const xAt = (k: number) => X_HEAD - (now - k) * SPACING;
+  const fadeAt = (x: number) => clamp01((x - X_FADE) / 200);
+
+  const edges: React.ReactNode[] = [];
+  const flows: React.ReactNode[] = [];
   const nodes: React.ReactNode[] = [];
-  const arm: React.ReactNode[] = [];
   const fx: React.ReactNode[] = [];
   const labels: React.ReactNode[] = [];
-  let centerKick = 0;
-  const hub = posAt(0, t);
+  const laneHead: Record<number, number> = {};
 
-  if (live) {
-    for (let k = k0; k <= K; k++) {
-      const born = START + k * PERIOD;
-      const age = (t - born) / PERIOD;
-      const p = posAt(age, t);
-      const fade = age < 10 ? 1 : Math.max(0, 1 - (age - 10) / 6);
-      const pop = clamp01(age / 0.25);
-      const r = (31 - Math.min(age, 16) * 1.2) * (0.4 + 0.6 * pop);
-      const declined = k > 0 && !OK[k];
-      const col = k === 0 ? C.lav : declined ? C.red : KIND[k] ? C.mint : C.amber;
-      nodes.push(
-        <g key={`n${k}`} opacity={fade}>
-          <circle cx={p.x} cy={p.y} r={r + 22} fill={col} opacity={0.14 + 0.4 * (1 - clamp01(age))} />
-          <circle cx={p.x} cy={p.y} r={r} fill={C.panel} stroke={col} strokeWidth={3} strokeDasharray={declined ? "6 5" : undefined} />
-        </g>,
-      );
-      if (age < 12 && r > 12) {
+  if (K >= 0) {
+    const k0 = Math.max(0, K - 9);
+    for (let i = FIRST_AT[k0]; i < FIRST_AT[K + 1]; i++) {
+      const c = COMMITS[i];
+      const age = now - c.k;
+      const x = xAt(c.k);
+      const y = LANE_Y[c.lane];
+      const fade = fadeAt(x);
+      const pop = clamp01(age / 0.22);
+      const col = LANE_COLOR[c.lane];
+      laneHead[c.lane] = i;
+      if (c.parent >= 0) {
+        const p = COMMITS[c.parent];
+        const px = xAt(p.k);
+        const py = LANE_Y[p.lane];
+        const grow = clamp01(age / 0.3);
+        const same = p.lane === c.lane;
+        const d = same
+          ? `M ${px + R} ${py} L ${px + R + (x - R - px - R) * grow} ${y}`
+          : `M ${px} ${py} C ${px + 70} ${py}, ${x - 80} ${y}, ${px + (x - R - px) * grow} ${py + (y - py) * grow}`;
+        const ef = Math.min(fade, fadeAt(px) * 0.6 + 0.4);
+        edges.push(<path key={`eg${i}`} d={d} fill="none" stroke={col} strokeWidth={12} opacity={0.08 * ef} strokeLinecap="round" />);
+        edges.push(<path key={`e${i}`} d={d} fill="none" stroke={col} strokeWidth={3} opacity={0.75 * ef} strokeLinecap="round" />);
+        if (grow >= 1) {
+          for (let j = 0; j < 2; j++) {
+            const u = (((t * 0.9 + j * 0.5 + rnd(i)) % 1) + 1) % 1;
+            const fx2 = same ? px + R + (x - R - px - R) * u : px + (x - px) * u;
+            const fy2 = same ? y : py + (y - py) * (u * u * (3 - 2 * u));
+            flows.push(<circle key={`f${i}-${j}`} cx={fx2} cy={fy2} r={3.5} fill={col} opacity={0.9 * ef} />);
+          }
+        }
+        const mx = same ? (px + x) / 2 : px + (x - px) * 0.62;
+        const my = same ? y - 30 : py + (y - py) * 0.62 - 26;
+        const lc = !c.ok ? C.red : c.dep ? C.mint : C.amber;
         labels.push(
           <div
-            key={`t${k}`}
+            key={`l${i}`}
             style={{
               position: "absolute",
-              left: p.x - 50,
-              top: p.y - 14,
+              left: mx - 50,
+              top: my - 14,
               width: 100,
               textAlign: "center",
               fontFamily: F.mono,
               fontWeight: 700,
-              fontSize: Math.max(12, r * 0.72),
-              lineHeight: "28px",
-              color: C.text,
-              opacity: fade * pop,
+              fontSize: 19,
+              color: lc,
+              opacity: fadeAt(mx) * clamp01((age - 0.15) / 0.2),
+              whiteSpace: "nowrap",
             }}
           >
-            {BAL[k]}
+            {`${c.dep ? "+" : "−"}${c.amt}${c.ok ? "" : " ✗"}`}
           </div>,
         );
-      }
-      const since = t - born;
-      if (k > 0 && since >= 0 && since < BURST) {
-        const q = since / BURST;
-        centerKick = Math.max(centerKick, 1 - q);
-        fx.push(<circle key={`flash${k}`} cx={hub.x} cy={hub.y} r={70 * (1 - q) + 10} fill="#ffffff" opacity={0.35 * (1 - q) * (1 - q)} />);
-        fx.push(<circle key={`ring${k}`} cx={hub.x} cy={hub.y} r={30 + 200 * q} fill="none" stroke={col} strokeWidth={4 * (1 - q)} opacity={0.85 * (1 - q)} />);
-        fx.push(<circle key={`ring2${k}`} cx={hub.x} cy={hub.y} r={20 + 120 * q} fill="none" stroke="#ffffff" strokeWidth={2 * (1 - q)} opacity={0.5 * (1 - q)} />);
-        for (let j = 0; j < 22; j++) {
-          const a = (j / 22) * Math.PI * 2 + rnd(k * 11 + j) * 0.6;
-          const d = 40 + 230 * (1 - (1 - q) * (1 - q)) * (0.5 + 0.7 * rnd(k * 13 + j));
-          fx.push(<circle key={`sp${k}-${j}`} cx={hub.x + Math.cos(a) * d} cy={hub.y + Math.sin(a) * d} r={3.2 * (1 - q) + 0.5} fill={j % 3 ? col : "#ffffff"} opacity={1 - q} />);
-          if (j % 2 === 0) {
-            fx.push(<line key={`st${k}-${j}`} x1={hub.x + Math.cos(a) * d * 0.7} y1={hub.y + Math.sin(a) * d * 0.7} x2={hub.x + Math.cos(a) * d} y2={hub.y + Math.sin(a) * d} stroke={col} strokeWidth={2} opacity={0.6 * (1 - q)} />);
-          }
+        if (!same && age < 0.8) {
+          const q = age / 0.8;
+          fx.push(<circle key={`fk${i}`} cx={px} cy={py} r={R + 30 * q} fill="none" stroke={col} strokeWidth={3 * (1 - q)} opacity={0.9 * (1 - q)} />);
         }
       }
-    }
-    const maxAge = Math.min(16, (t - (START + k0 * PERIOD)) / PERIOD);
-    const pts: { x: number; y: number }[] = [];
-    for (let a = 0; a <= maxAge; a += 0.1) {
-      pts.push(posAt(a, t));
-    }
-    for (let i = 0; i + 1 < pts.length; i += 3) {
-      const seg = pts.slice(i, i + 4);
-      const a = i * 0.1;
-      const fade = a < 10 ? 1 : Math.max(0, 1 - (a - 10) / 6);
-      const d = `M ${seg.map((q) => `${q.x},${q.y}`).join(" L ")}`;
-      arm.push(<path key={`ag${i}`} d={d} fill="none" stroke={C.accentHi} strokeWidth={16} opacity={0.07 * fade} strokeLinecap="round" />);
-      arm.push(<path key={`ac${i}`} d={d} fill="none" stroke={C.lav} strokeWidth={2.5} opacity={0.45 * fade} strokeLinecap="round" />);
-    }
-    if (pts.length > 1) {
-      arm.push(
-        <path
-          key="flow"
-          d={`M ${pts.map((q) => `${q.x},${q.y}`).join(" L ")}`}
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth={3}
-          strokeDasharray="2 16"
-          strokeDashoffset={-t * 60}
-          opacity={0.45}
-          strokeLinecap="round"
-        />,
-      );
-    }
-    for (let k = Math.max(1, K - 1); k <= Math.min(N, K + 2); k++) {
-      const born = START + k * PERIOD;
-      const u = (t - (born - FLY)) / FLY;
-      if (u < 0 || u >= 1) {
-        continue;
+      if (age < 0.7) {
+        const q = age / 0.7;
+        fx.push(<circle key={`b${i}`} cx={x} cy={y} r={R + 46 * q} fill="none" stroke={col} strokeWidth={3 * (1 - q)} opacity={0.8 * (1 - q) * fade} />);
+        for (let j = 0; j < 8; j++) {
+          const a = (j / 8) * Math.PI * 2 + rnd(i * 3 + j);
+          const dd = R + 60 * q;
+          fx.push(<circle key={`bs${i}-${j}`} cx={x + Math.cos(a) * dd} cy={y + Math.sin(a) * dd} r={2.6 * (1 - q)} fill={col} opacity={(1 - q) * fade} />);
+        }
       }
-      const phi = rnd(k * 7.7) * Math.PI * 2;
-      const R0 = 560;
-      const head = (v: number) => {
-        const e = v * v;
-        return { x: hub.x + Math.cos(phi) * R0 * (1 - e), y: hub.y + Math.sin(phi) * R0 * 0.8 * (1 - e) };
-      };
-      const col = !OK[k] ? C.red : KIND[k] ? C.mint : C.amber;
-      const hd = head(u);
-      for (let j = 16; j >= 1; j--) {
-        const v = Math.max(0, u - j * 0.02);
-        const q = head(v);
-        fx.push(<circle key={`c${k}-${j}`} cx={q.x} cy={q.y} r={9 * (1 - j / 17)} fill={col} opacity={0.6 * (1 - j / 17)} />);
-      }
-      fx.push(
-        <g key={`ch${k}`}>
-          <circle cx={hd.x} cy={hd.y} r={30} fill={col} opacity={0.2} />
-          <circle cx={hd.x} cy={hd.y} r={10} fill={col} />
-          <circle cx={hd.x} cy={hd.y} r={4} fill="#ffffff" />
+      nodes.push(
+        <g key={`n${i}`} opacity={fade}>
+          <circle cx={x} cy={y} r={R + 12} fill={col} opacity={0.1 + 0.3 * clamp01(1 - age)} />
+          <circle cx={x} cy={y} r={R * (0.5 + 0.5 * pop)} fill={C.panel} stroke={col} strokeWidth={3} strokeDasharray={c.ok ? undefined : "5 4"} />
         </g>,
       );
       labels.push(
         <div
-          key={`cl${k}`}
+          key={`v${i}`}
           style={{
             position: "absolute",
-            left: hd.x + 16,
-            top: hd.y - 36,
+            left: x - 40,
+            top: y - 13,
+            width: 80,
+            textAlign: "center",
             fontFamily: F.mono,
             fontWeight: 700,
-            fontSize: 26,
-            color: col,
-            textShadow: `0 0 12px ${col}`,
-            opacity: clamp01(u * 4) * clamp01((1 - u) * 6),
-            whiteSpace: "nowrap",
+            fontSize: c.bal >= 1000 ? 15 : 18,
+            lineHeight: "26px",
+            color: C.text,
+            opacity: fade * pop,
           }}
         >
-          {`${KIND[k] ? "+" : "−"}${AMT[k]}`}
+          {c.bal}
         </div>,
       );
     }
+    Object.entries(laneHead).forEach(([laneStr, idx]) => {
+      const lane = Number(laneStr);
+      const c = COMMITS[idx];
+      if (now - c.k > 1.4 && lane !== 0) {
+        return;
+      }
+      const x = xAt(c.k);
+      const y = LANE_Y[lane];
+      const col = LANE_COLOR[lane];
+      labels.push(
+        <div
+          key={`tag${lane}`}
+          style={{
+            position: "absolute",
+            left: x + R + 14,
+            top: y - 15,
+            padding: "2px 10px",
+            borderRadius: 8,
+            border: `2px solid ${col}`,
+            background: `${col}22`,
+            fontFamily: F.mono,
+            fontWeight: 700,
+            fontSize: 17,
+            color: col,
+            whiteSpace: "nowrap",
+            opacity: fadeAt(x),
+          }}
+        >
+          {lane === 0 ? "HEAD → main" : `alt-${c.branch}`}
+        </div>,
+      );
+    });
   }
 
   return (
@@ -210,44 +241,40 @@ const Outro: React.FC = () => {
       <div
         style={{
           position: "absolute",
-          left: CX - 560,
-          top: CY - 560,
-          width: 1120,
-          height: 1120,
-          borderRadius: 560,
-          background: `radial-gradient(circle, rgba(141,118,220,${0.2 + 0.12 * centerKick}) 0%, rgba(178,95,168,0.08) 35%, rgba(24,28,40,0) 68%)`,
+          left: 900,
+          top: 80,
+          width: 1100,
+          height: 920,
+          borderRadius: 460,
+          background: "radial-gradient(ellipse at center, rgba(141,118,220,0.14) 0%, rgba(178,95,168,0.06) 40%, rgba(24,28,40,0) 70%)",
           opacity: scene,
         }}
       />
-      {[
-        { x: CX + 260 + 120 * Math.sin(t * 0.17), y: CY - 180 + 90 * Math.cos(t * 0.21), c: "178,95,168", a: 0.16 },
-        { x: CX - 260 + 140 * Math.cos(t * 0.13 + 1), y: CY + 200 + 80 * Math.sin(t * 0.19), c: "134,224,168", a: 0.09 },
-        { x: CX + 120 + 100 * Math.cos(t * 0.11 + 2), y: CY + 260 + 70 * Math.sin(t * 0.15 + 1), c: "242,193,125", a: 0.08 },
-      ].map((b, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            left: b.x - 480,
-            top: b.y - 480,
-            width: 960,
-            height: 960,
-            borderRadius: 480,
-            background: `radial-gradient(circle, rgba(${b.c},${b.a}) 0%, rgba(${b.c},0) 62%)`,
-            opacity: scene,
-          }}
-        />
-      ))}
       <svg width={1920} height={1080} style={{ position: "absolute", left: 0, top: 0, opacity: scene }}>
         {DUST.map((d, i) => (
-          <circle key={i} cx={d.x} cy={d.y} r={d.r} fill={d.c} opacity={0.1 + 0.3 * (0.5 + 0.5 * Math.sin(t * 1.5 + d.ph))} />
+          <circle key={i} cx={d.x} cy={d.y} r={d.r} fill={d.c} opacity={0.08 + 0.25 * (0.5 + 0.5 * Math.sin(t * 1.5 + d.ph))} />
         ))}
-        <ellipse cx={CX} cy={CY} rx={470} ry={404} fill="none" stroke={C.line} strokeWidth={1.5} strokeDasharray="4 16" transform={`rotate(${t * 4} ${CX} ${CY})`} />
-        <ellipse cx={CX} cy={CY} rx={300} ry={258} fill="none" stroke={C.line} strokeWidth={1.2} strokeDasharray="2 12" transform={`rotate(${-t * 6} ${CX} ${CY})`} />
-        {arm}
-        {nodes}
-        {fx}
+        {LANE_Y.map((y, i) => (
+          <line key={i} x1={X_FADE} y1={y} x2={1900} y2={y} stroke={C.line} strokeWidth={1} strokeDasharray="2 12" opacity={0.6} />
+        ))}
+        <line x1={X_HEAD + 60} y1={180} x2={X_HEAD + 60} y2={940} stroke={C.accentHi} strokeWidth={2} strokeDasharray="4 8" opacity={0.35} />
+        <defs>
+          <linearGradient id="graphFade" gradientUnits="userSpaceOnUse" x1={X_FADE - 40} y1={0} x2={X_FADE + 160} y2={0}>
+            <stop offset="0%" stopColor="#000000" />
+            <stop offset="100%" stopColor="#ffffff" />
+          </linearGradient>
+          <mask id="graphMask">
+            <rect x={0} y={0} width={1920} height={1080} fill="url(#graphFade)" />
+          </mask>
+        </defs>
+        <g mask="url(#graphMask)">
+          {edges}
+          {flows}
+          {nodes}
+          {fx}
+        </g>
       </svg>
+      <div style={{ position: "absolute", left: X_HEAD + 30, top: 140, fontFamily: F.mono, fontSize: 18, color: C.dim, opacity: scene }}>зараз</div>
       <div style={{ position: "absolute", left: 0, top: 0, width: 1920, height: 1080, opacity: scene }}>{labels}</div>
 
       <div style={{ position: "absolute", left: 90, top: 150, fontFamily: F.head, fontWeight: 800, fontSize: 104, lineHeight: 1.12, color: C.text }}>
